@@ -190,6 +190,20 @@
         button.danger:hover:not(:disabled) { background-color: rgba(239, 68, 68, 0.1); }
 
         /* Status & Stats */
+        .stats-wrapper {
+            display: flex;
+            align-items: stretch;
+            gap: 1rem;
+        }
+
+        .stats-wrapper .stats-panel {
+            flex: 1;
+        }
+
+        .stats-wrapper button.danger {
+            white-space: nowrap;
+        }
+
         .stats-panel {
             display: flex;
             justify-content: space-around;
@@ -339,10 +353,13 @@
         <p class="subtitle">Zwei Systeme lernen durch Reinforcement Learning (Self-Play) den optimalen Weg.</p>
     </header>
 
-    <div class="stats-panel">
-        <div>Spiele gesamt: <span id="total-games">0</span></div>
-        <div class="stat-a">System A Siege: <span id="wins-a">0</span></div>
-        <div class="stat-b">System B Siege: <span id="wins-b">0</span></div>
+    <div class="stats-wrapper">
+        <div class="stats-panel">
+            <div>Spiele gesamt: <span id="total-games">0</span></div>
+            <div class="stat-a">System A Siege: <span id="wins-a">0</span></div>
+            <div class="stat-b">System B Siege: <span id="wins-b">0</span></div>
+        </div>
+        <button class="danger" id="btn-reset" onclick="resetAll()">Reset</button>
     </div>
 
     <div class="board-container">
@@ -358,7 +375,6 @@
         <button id="btn-auto-play" onclick="startAutoPlay()">Einzelspiel (automatisch)</button>
         <button id="btn-play-10" onclick="playGames(10)">10 Spiele trainieren</button>
         <button id="btn-play-100" onclick="playGames(100)">100 Spiele trainieren</button>
-        <button class="danger" id="btn-reset" onclick="resetAll()">Reset</button>
     </div>
 
     <div class="tables-wrapper">
