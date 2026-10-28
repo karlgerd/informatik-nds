@@ -353,7 +353,9 @@
     </div>
 
     <div class="controls">
-        <button class="primary" id="btn-main-action" onclick="handleMainAction()">Spiel starten</button>
+        <button class="primary" id="btn-main-action" onclick="handleMainAction()">Spiel starten (Einzelschritt-Modus)</button>
+        <button id="btn-undo" onclick="undoStep()" disabled>Schritt zurück</button>
+        <button id="btn-auto-play" onclick="startAutoPlay()">Einzelspiel (automatisch)</button>
         <button id="btn-play-10" onclick="playGames(10)">10 Spiele trainieren</button>
         <button id="btn-play-100" onclick="playGames(100)">100 Spiele trainieren</button>
         <button class="danger" id="btn-reset" onclick="resetAll()">Reset</button>
@@ -400,7 +402,11 @@
         historyA: [],
         historyB: [],
         phase: 'idle', // 'idle', 'playing', 'learning'
-        winner: null
+        winner: null,
+        timeline: [],
+        timelineIndex: 0,
+        winLogElem: null,
+        autoPlaying: false
     };
 
     // --- Initialisierung ---
@@ -432,8 +438,15 @@
         
         stepState.active = false;
         stepState.phase = 'idle';
+        stepState.timeline = [];
+        stepState.timelineIndex = 0;
+        stepState.autoPlaying = false;
+        
         updateMainButton();
+        updateUndoButton();
         setButtonsState(true);
+        document.getElementById('btn-auto-play').disabled = false;
+        document.getElementById('btn-main-action').disabled = false;
 
         let startFieldText = document.querySelector('#field-0 .field-text');
         if (startFieldText) {
@@ -557,6 +570,13 @@
         }
     }
 
+    function updateUndoButton() {
+        let btn = document.getElementById('btn-undo');
+        if (btn) {
+            btn.disabled = (stepState.phase === 'idle' || stepState.timelineIndex === 0 || stepState.autoPlaying);
+        }
+    }
+
     function handleMainAction() {
         let btn = document.getElementById('btn-main-action');
         btn.disabled = true; // Doppelklick-Schutz
@@ -582,7 +602,11 @@
             historyA: [],
             historyB: [],
             phase: 'playing',
-            winner: null
+            winner: null,
+            timeline: [],
+            timelineIndex: 0,
+            winLogElem: null,
+            autoPlaying: false
         };
         
         let startFieldText = document.querySelector('#field-0 .field-text');
@@ -595,6 +619,7 @@
         
         setButtonsState(false);
         updateMainButton();
+        updateUndoButton();
     }
 
     async function nextStep() {
@@ -602,10 +627,23 @@
         let currPlayer = stepState.currPlayer;
         let brain = currPlayer === 'A' ? brainA : brainB;
 
-        let moveInfo = chooseMove(brain, pos, currPlayer);
-        let move = moveInfo.move;
-        
-        log(moveInfo.logMsg, currPlayer.toLowerCase());
+        let moveInfo, move, logMsg, action;
+
+        // Deterministisches Replay: Falls wir Schritte rückgängig gemacht haben, spiele sie neu ab
+        if (stepState.timelineIndex < stepState.timeline.length) {
+            action = stepState.timeline[stepState.timelineIndex];
+            move = action.move;
+            logMsg = action.logMsg;
+            action.logElem = log(logMsg, currPlayer.toLowerCase(), true);
+        } else {
+            // Neuer Wurf, falls wir am Ende der Zeitleiste sind
+            moveInfo = chooseMove(brain, pos, currPlayer);
+            move = moveInfo.move;
+            logMsg = moveInfo.logMsg;
+            action = { player: currPlayer, fromPos: pos, move: move, logMsg: logMsg, cellId: `cell-${currPlayer.toLowerCase()}-${pos}-${move}`, logElem: null };
+            stepState.timeline.push(action);
+            action.logElem = log(logMsg, currPlayer.toLowerCase(), true);
+        }
 
         if (currPlayer === 'A') {
             stepState.historyA.push({ pos, move });
@@ -613,18 +651,19 @@
             stepState.historyB.push({ pos, move });
         }
         
-        // Matrix Highlight für alle Züge des aktuellen Spiels beibehalten
+        // Matrix Highlight
         if (pos < TARGET_FIELD) {
-            let cellId = `cell-${currPlayer.toLowerCase()}-${pos}-${move}`;
-            let cell = document.getElementById(cellId);
+            let cell = document.getElementById(action.cellId);
             if (cell) cell.classList.add('cell-chosen');
         }
+
+        stepState.timelineIndex++;
 
         // Animation auf dem Feld
         for (let step = 1; step <= move; step++) {
             pos++;
             renderBoard(pos, currPlayer);
-            await sleep(250);
+            await sleep(stepState.autoPlaying ? 100 : 250); // Schneller, wenn automatisch
         }
 
         // Feld färben, auf dem die Figur abgesetzt wurde
@@ -642,11 +681,93 @@
             let winner = currPlayer; 
             stepState.winner = winner;
             renderBoard(TARGET_FIELD, winner);
-            log(`System ${winner} hat das Ziel erreicht!`, 'neutral');
+            stepState.winLogElem = log(`System ${winner} hat das Ziel erreicht!`, 'neutral', true);
             
             stepState.phase = 'learning';
             updateMainButton();
         }
+        updateUndoButton();
+    }
+
+    function undoStep() {
+        if (stepState.phase === 'idle' || stepState.timelineIndex === 0 || stepState.autoPlaying) return;
+        
+        // Phase zurücksetzen, falls wir schon im End-Screen waren
+        if (stepState.phase === 'learning') {
+            stepState.phase = 'playing';
+            if (stepState.winLogElem) {
+                stepState.winLogElem.remove();
+                stepState.winLogElem = null;
+            }
+            stepState.winner = null;
+            updateMainButton();
+        }
+        
+        stepState.timelineIndex--;
+        let action = stepState.timeline[stepState.timelineIndex];
+        
+        // Log-Eintrag entfernen
+        if (action.logElem) {
+            action.logElem.remove();
+            action.logElem = null;
+        }
+        
+        // Historie bereinigen
+        if (action.player === 'A') stepState.historyA.pop();
+        else stepState.historyB.pop();
+        
+        // Spielerposition und Turn zurücksetzen
+        stepState.pos = action.fromPos;
+        stepState.currPlayer = action.player;
+        
+        recalculateBoardColors();
+        renderBoard(stepState.pos, stepState.currPlayer);
+        updateUndoButton();
+    }
+
+    function recalculateBoardColors() {
+        // Kompletten Board-State visuell bereinigen
+        for (let i = 0; i < TOTAL_FIELDS; i++) {
+            let f = document.getElementById(`field-${i}`);
+            if (f) f.classList.remove('visited-a', 'visited-b');
+        }
+        document.querySelectorAll('.cell-chosen').forEach(el => el.classList.remove('cell-chosen'));
+
+        // Und anhand der aktuellen Zeitleiste wieder aufbauen
+        for (let i = 0; i < stepState.timelineIndex; i++) {
+            let a = stepState.timeline[i];
+            let landed = a.fromPos + a.move;
+            let cell = document.getElementById(a.cellId);
+            if (cell) cell.classList.add('cell-chosen');
+            let f = document.getElementById(`field-${landed}`);
+            if (f) f.classList.add(`visited-${a.player.toLowerCase()}`);
+        }
+    }
+
+    async function startAutoPlay() {
+        if (stepState.phase === 'idle') {
+            startStepGame();
+        }
+        stepState.autoPlaying = true;
+        setButtonsState(false);
+        document.getElementById('btn-main-action').disabled = true;
+        document.getElementById('btn-undo').disabled = true;
+        document.getElementById('btn-auto-play').disabled = true;
+        
+        while (stepState.autoPlaying && stepState.phase !== 'idle') {
+            if (stepState.phase === 'playing') {
+                await nextStep();
+            } else if (stepState.phase === 'learning') {
+                await executeLearning();
+            }
+            await sleep(800);
+        }
+        
+        stepState.autoPlaying = false;
+        setButtonsState(true);
+        document.getElementById('btn-main-action').disabled = false;
+        document.getElementById('btn-auto-play').disabled = false;
+        updateUndoButton();
     }
 
     async function executeLearning() {
@@ -685,6 +806,8 @@
         
         stepState.active = false;
         stepState.phase = 'idle';
+        stepState.timeline = [];
+        stepState.timelineIndex = 0;
         
         let startFieldText = document.querySelector('#field-0 .field-text');
         if (startFieldText) {
@@ -693,6 +816,7 @@
 
         setButtonsState(true);
         updateMainButton();
+        updateUndoButton();
         renderBoard(0, null); 
     }
 
@@ -831,13 +955,14 @@
         }
     }
 
-    function log(msg, type = 'neutral') {
+    function log(msg, type = 'neutral', returnElem = false) {
         const logOut = document.getElementById('log-output');
         const entry = document.createElement('div');
         entry.className = `log-entry log-${type}`;
         entry.innerHTML = msg;
         logOut.prepend(entry);
         logOut.scrollTop = 0;
+        if (returnElem) return entry;
     }
 
     function clearLog() {
@@ -859,6 +984,7 @@
     buildBoardUI();
     updateUI();
     updateMainButton();
+    updateUndoButton();
     renderBoard(0, null);
 </script>
 </body>
