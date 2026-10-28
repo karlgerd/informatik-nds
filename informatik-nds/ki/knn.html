@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>k-NN | informatik-nds</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.js"></script>
+  <style>
+    body {
+      padding: 0; margin: 0;
+      display: flex; justify-content: center; align-items: center;
+      background-color: #1e1e1e; /* Dark Mode */
+      height: 100vh; font-family: 'Segoe UI', sans-serif; overflow: hidden;
+    }
+    canvas { box-shadow: 0 0 30px rgba(0,0,0,0.5); border-radius: 4px; }
+    .home-btn {
+        position: fixed; top: 20px; left: 20px;
+        background: rgba(255,255,255,0.1); color: white;
+        text-decoration: none; padding: 8px 15px; border-radius: 5px;
+        font-size: 14px; border: 1px solid rgba(255,255,255,0.2);
+        transition: all 0.2s; z-index: 1000;
+    }
+    .home-btn:hover { background: rgba(255,255,255,0.2); }
+  </style>
+</head>
+<body>
+<a href="index.html" class="home-btn">⬅ Übersicht</a>
+
+<script>
+// Code gekürzt, Logik unverändert:
+let kSlider,classSlider,spreadSlider,trainingData=[],currentK=4,currentClasses=4,currentSpread=1.8,showHeatmap=!1,heatmapDirty=!0,heatmapImg,heatmapRes=60,partyMode=!1,keyBuffer="",fireworks=[],gravity,classColors=[],gridSize=20,margin=60,scaleFactor;
+function setup(){createCanvas(850,950),pixelDensity(1),gravity=createVector(0,.2),classColors=[color(255,50,50),color(50,100,255),color(40,180,40),color(255,180,0),color(160,50,200),color(0,180,200)],scaleFactor=(width-2*margin)/gridSize;let e=220,t=30;kSlider=new Slider(margin,75,e,20,1,15,4,!0,"Anzahl Nachbarn (k)"),classSlider=new Slider(margin+e+t,75,e,20,3,6,4,!0,"Anzahl Klassen"),spreadSlider=new Slider(margin+2*(e+t),75,e,20,.5,3,1.8,!1,"Streuung"),heatmapImg=createImage(heatmapRes,heatmapRes),generateData()}
+function draw(){partyMode?(background(30),random(1)<.05&&fireworks.push(new Firework)):background(255);let e=kSlider.update(),t=classSlider.update(),r=spreadSlider.update();e&&(currentK=int(kSlider.value),heatmapDirty=!0),(t||r)&&(currentClasses=int(classSlider.value),currentSpread=spreadSlider.value,generateData()),showHeatmap&&heatmapDirty&&calculateHeatmap(),kSlider.display(),classSlider.display(),spreadSlider.display(),drawUI();let a=gridSize*scaleFactor,i=height-margin-a,l=height-margin,s=margin,n=width-margin,o=mouseX>=s&&mouseX<=n&&mouseY>=i&&mouseY<=l,c=drawingContext;c.save(),c.beginPath(),c.rect(s,i,a,a),c.clip(),push(),translate(margin,height-margin),scale(1,-1),showHeatmap&&image(heatmapImg,0,0,gridSize*scaleFactor,gridSize*scaleFactor),drawGridLinesOnly(),drawTrainingData(),o&&(function(){let e=(mouseX-margin)/scaleFactor,t=(height-margin-mouseY)/scaleFactor,r=createVector(e,t),a=calculateKNN(r,currentK);drawKNNVisuals(r,a)}()),pop(),c.restore(),noFill(),stroke(partyMode?200:0),strokeWeight(1),rect(s,i,a,a),partyMode&&runFireworks()}
+function drawUI(){noStroke(),partyMode?fill(255):fill(0),textAlign(LEFT,BASELINE),textSize(24),textStyle(BOLD),text("Interaktiver k-NN Simulator",margin,35),textStyle(NORMAL),textSize(14),textAlign(LEFT,TOP),text("Steuerung: Maus bewegen | [R] Neue Daten | [F] Schattierung an/aus",margin,120),partyMode?fill(200):fill(50);let e="Der Mauszeiger ist der 'unbekannte Punkt'.";showHeatmap&&(e+=" (Hintergrund zeigt Vorhersage)"),partyMode&&(e+=" *** PARTY MODE ACTIVATED ***"),text(e,margin,145)}
+function calculateHeatmap(){heatmapImg.loadPixels();for(let e=0;e<heatmapRes;e++)for(let t=0;t<heatmapRes;t++){let r=map(t,0,heatmapRes,0,gridSize),a=map(e,0,heatmapRes,0,gridSize),i=predictClassSimple(r,a),l=4*(t+e*heatmapRes);if(-1!==i){let s=classColors[i];heatmapImg.pixels[l]=red(s),heatmapImg.pixels[l+1]=green(s),heatmapImg.pixels[l+2]=blue(s),heatmapImg.pixels[l+3]=80}else heatmapImg.pixels[l+3]=0}heatmapImg.updatePixels(),heatmapDirty=!1}
+function predictClassSimple(e,t){let r=[];for(let a=0;a<trainingData.length;a++){let i=trainingData[a],l=dist(e,t,i.pos.x,i.pos.y);r.push({dist:l,classId:i.classId})}r.sort((e,t)=>e.dist-t.dist);let a=min(currentK,r.length),i=new Array(currentClasses).fill(0);for(let e=0;e<a;e++){let t=r[e].classId;t<currentClasses&&i[t]++}let l=-1,s=-1;for(let e=0;e<currentClasses;e++)i[e]>l&&(l=i[e],s=e);return s}
+function calculateKNN(e,t){for(let r of trainingData)r.distanceToQuery=p5.Vector.dist(e,r.pos);let r=[...trainingData];r.sort((e,t)=>e.distanceToQuery-t.distanceToQuery);let a={neighbors:[],predictedClass:-1,radius:0},i=new Array(currentClasses).fill(0),l=min(t,r.length);for(let e=0;e<l;e++){let t=r[e];a.neighbors.push(t),t.classId<currentClasses&&i[t.classId]++,e===l-1&&(a.radius=t.distanceToQuery)}let s=-1;for(let e=0;e<currentClasses;e++)i[e]>s&&(s=i[e],a.predictedClass=e);return a}
+function generateData(){trainingData=[];let e=6,t=createVector(10,10);for(let r=0;r<currentClasses;r++){let a=map(r,0,currentClasses,0,TWO_PI)+HALF_PI,i=t.x+cos(a)*e,l=t.y+sin(a)*e;i=constrain(i,3,17),l=constrain(l,3,17);for(let e=0;e<15;e++){let t=0,a=0,s=!1,n=0;for(;!s&&n<100;)t=randomGaussian(i,currentSpread),a=randomGaussian(l,currentSpread),t>.5&&t<19.5&&a>.5&&a<19.5&&(s=!0),n++;s||(t=constrain(t,.5,19.5),a=constrain(a,.5,19.5)),trainingData.push({pos:createVector(t,a),classId:r,distanceToQuery:0})}}heatmapDirty=!0}
+function drawKNNVisuals(e,t){noFill(),stroke(80),strokeWeight(1),ellipse(e.x*scaleFactor,e.y*scaleFactor,2*t.radius*scaleFactor);for(let r of t.neighbors){let a=classColors[r.classId];stroke(red(a),green(a),blue(a),200),strokeWeight(1.5),line(e.x*scaleFactor,e.y*scaleFactor,r.pos.x*scaleFactor,r.pos.y*scaleFactor)}stroke(0),strokeWeight(2),-1!==t.predictedClass?fill(classColors[t.predictedClass]):fill(200),ellipse(e.x*scaleFactor,e.y*scaleFactor,18,18),fill(255),noStroke(),textSize(10),textAlign(CENTER,CENTER),push(),translate(e.x*scaleFactor,e.y*scaleFactor),scale(1,-1),text("?",0,0),pop()}
+function drawTrainingData(){for(let e of trainingData)showHeatmap?stroke(0):noStroke(),strokeWeight(1),fill(classColors[e.classId]),ellipse(e.pos.x*scaleFactor,e.pos.y*scaleFactor,10,10)}
+function drawGridLinesOnly(){strokeWeight(1),stroke(partyMode?100:200);for(let e=0;e<=gridSize;e++){let t=e*scaleFactor;line(t,0,t,gridSize*scaleFactor),line(0,t,gridSize*scaleFactor,t)}}
+function runFireworks(){for(let e=fireworks.length-1;e>=0;e--){let t=fireworks[e];t.run(),t.done()&&fireworks.splice(e,1)}}
+class Particle{constructor(e,t,r,a){this.pos=createVector(e,t),this.firework=a,this.lifespan=255,this.col=r,this.firework?this.vel=createVector(0,random(-12,-8)):(this.vel=p5.Vector.random2D(),this.vel.mult(random(2,10))),this.acc=createVector(0,0)}applyForce(e){this.acc.add(e)}update(){this.firework||(this.vel.mult(.9),this.lifespan-=4),this.vel.add(this.acc),this.pos.add(this.vel),this.acc.mult(0)}done(){return this.lifespan<0}show(){this.firework?(strokeWeight(4),stroke(this.col)):(strokeWeight(2),stroke(red(this.col),green(this.col),blue(this.col),this.lifespan)),point(this.pos.x,this.pos.y)}}
+class Firework{constructor(){this.col=color(random(255),random(255),random(255)),this.firework=new Particle(random(width),height,this.col,!0),this.exploded=!1,this.particles=[]}done(){return this.exploded&&0===this.particles.length}run(){if(this.exploded||(this.firework.applyForce(gravity),this.firework.update(),this.firework.show(),this.firework.vel.y>=0&&(this.exploded=!0,this.explode())),this.particles.length>0)for(let e=this.particles.length-1;e>=0;e--){let t=this.particles[e];t.applyForce(gravity),t.update(),t.show(),t.done()&&this.particles.splice(e,1)}}explode(){for(let e=0;e<100;e++){let t=new Particle(this.firework.pos.x,this.firework.pos.y,this.col,!1);this.particles.push(t)}}}
+function keyPressed(){1===key.length&&(keyBuffer+=key.toLowerCase(),keyBuffer.length>5&&(keyBuffer=keyBuffer.substring(keyBuffer.length-5)),"party"===keyBuffer&&(partyMode=!partyMode)),("r"===key||"R"===key)&&generateData(),("f"===key||"F"===key)&&(showHeatmap=!showHeatmap,showHeatmap&&(heatmapDirty=!0))}
+class Slider{constructor(e,t,r,a,i,l,s,n,o){this.x=e,this.y=t,this.w=r,this.h=a,this.min=i,this.max=l,this.value=s,this.isInt=n,this.label=o,this.dragging=!1}update(){let e=!1;return mouseIsPressed&&mouseX>=this.x&&mouseX<=this.x+this.w&&mouseY>=this.y&&mouseY<=this.y+this.h&&(this.dragging=!0),mouseIsPressed||(this.dragging=!1),this.dragging&&(e=!0,this.value=constrain(map(mouseX,this.x,this.x+this.w,this.min,this.max),this.min,this.max),this.isInt&&(this.value=Math.round(this.value))),e}display(){stroke(0),fill(240),rect(this.x,this.y,this.w,this.h);let e=map(this.value,this.min,this.max,this.x,this.x+this.w);partyMode?fill(255,100,100):fill(100,150,255),rect(this.x,this.y,e-this.x,this.h),fill(255),stroke(0),rect(e-5,this.y-2,10,this.h+4),noStroke(),partyMode?fill(255):fill(0),textSize(14),textAlign(LEFT,BOTTOM),text(this.label,this.x,this.y-5),textAlign(RIGHT,BOTTOM),text(this.isInt?str(int(this.value)):nf(this.value,1,1),this.x+this.w,this.y-5)}}
+</script>
+</body>
+</html>
